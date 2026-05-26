@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: stg_tlc_yellow
+    description: Normalized yellow taxi trip rows. Filters to the ingest month.
+    columns:
+      - name: pickup_ts
+        tests:
+          - not_null
+      - name: dropoff_ts
+        tests:
+          - not_null
+      - name: pickup_zone_id
+        tests:
+          - not_null
+
+  - name: stg_weather_nyc_daily
+    description: Daily NYC weather, one row per date.
+    columns:
+      - name: weather_date
+        tests:
+          - not_null
+          - unique

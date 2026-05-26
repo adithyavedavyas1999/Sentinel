@@ -1,0 +1,61 @@
+{
+  "title": "Sentinel — Data Quality",
+  "uid": "sentinel-data-quality",
+  "schemaVersion": 39,
+  "tags": ["sentinel", "dq"],
+  "timezone": "browser",
+  "time": { "from": "now-7d", "to": "now" },
+  "refresh": "1m",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "DQ pass rate (24h)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(sentinel_dq_check_total{result=\"pass\"}[24h])) / sum(increase(sentinel_dq_check_total[24h]))",
+          "legendFormat": "pass rate"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.9 },
+              { "color": "green", "value": 0.98 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "DQ results over time",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 6, "y": 0, "w": 18, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (check_name, result) (rate(sentinel_dq_check_total[10m]))",
+          "legendFormat": "{{check_name}} — {{result}}"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Top failing checks",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (check_name) (increase(sentinel_dq_check_total{result=\"fail\"}[24h])))",
+          "instant": true,
+          "format": "table"
+        }
+      ]
+    }
+  ]
+}

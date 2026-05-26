@@ -1,0 +1,57 @@
+version: 2
+
+models:
+  - name: silver_trips_weather
+    description: Trip-grain table with weather attached on pickup date.
+    columns:
+      - name: pickup_ts
+        tests:
+          - not_null
+      - name: pickup_zone_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_zones')
+              field: zone_id
+              # ~70 TLC zones aren't always populated; treat as warn not error
+              severity: warn
+
+  - name: fct_trips_daily
+    description: One row per (pickup_date, pickup_zone_id). Daily ride volume.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [pickup_date, pickup_zone_id]
+    columns:
+      - name: pickup_date
+        tests:
+          - not_null
+          - sentinel_no_future_dates
+      - name: pickup_zone_id
+        tests:
+          - not_null
+      - name: trip_count
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              row_condition: "trip_count is not null"
+              strictly: false
+      - name: avg_fare
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 500
+              row_condition: "avg_fare is not null"
+              severity: warn
+
+  - name: dim_zones
+    description: TLC pickup zone dimension. Seeded from the public CSV.
+    columns:
+      - name: zone_id
+        tests:
+          - not_null
+          - unique
+      - name: borough
+        tests:
+          - accepted_values:
+              values: ['EWR', 'Queens', 'Bronx', 'Manhattan', 'Staten Island', 'Brooklyn', 'Unknown']

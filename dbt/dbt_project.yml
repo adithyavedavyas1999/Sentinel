@@ -1,0 +1,36 @@
+name: sentinel
+version: 0.1.0
+config-version: 2
+
+profile: sentinel
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+analysis-paths: ["analyses"]
+
+target-path: target
+clean-targets:
+  - target
+  - dbt_packages
+
+models:
+  sentinel:
+    staging:
+      +materialized: view
+      +schema: staging
+    marts:
+      +materialized: table
+      +schema: marts
+
+seeds:
+  sentinel:
+    +schema: seeds
+
+vars:
+  # Path of the duckdb file inside the container. Override with --vars on the CLI
+  # if you're running dbt locally outside of the dagster stack.
+  duckdb_path: "/opt/dagster/data/warehouse/sentinel.duckdb"
+  minio_endpoint: "http://minio:9000"
+  minio_bucket: "sentinel-raw"

@@ -1,0 +1,71 @@
+{
+  "title": "Sentinel — Pipeline Health",
+  "uid": "sentinel-pipeline-health",
+  "schemaVersion": 39,
+  "tags": ["sentinel"],
+  "timezone": "browser",
+  "time": { "from": "now-24h", "to": "now" },
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Materializations (last 1h)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum by (status) (increase(sentinel_asset_materializations_total[1h]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Materializations over time",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 6, "y": 0, "w": 18, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (asset, status) (rate(sentinel_asset_materializations_total[5m]))",
+          "legendFormat": "{{asset}} / {{status}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingest latency p95 by source",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, source) (rate(sentinel_ingest_latency_seconds_bucket[5m])))",
+          "legendFormat": "p95 — {{source}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Rows landed (rate)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (asset) (rate(sentinel_rows_landed_total[5m]))",
+          "legendFormat": "{{asset}}"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Recent pipeline errors (loki)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "{container=~\"sentinel.*|dagster.*\"} |= \"ERROR\" or |= \"error\"",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

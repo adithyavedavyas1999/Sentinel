@@ -1,0 +1,90 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: python (lint + types + tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.5"
+          enable-cache: true
+
+      - name: python
+        run: uv python install 3.11
+
+      - name: install
+        run: |
+          uv venv
+          uv pip install -e ".[dev]"
+
+      - name: ruff
+        run: |
+          source .venv/bin/activate
+          ruff check .
+          ruff format --check .
+
+      - name: mypy
+        run: |
+          source .venv/bin/activate
+          mypy sentinel
+
+      - name: pytest
+        run: |
+          source .venv/bin/activate
+          pytest -m "not integration" --cov-report=xml
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-xml
+          path: coverage.xml
+
+  dbt:
+    name: dbt (compile + test on sample)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.5"
+
+      - name: install dbt
+        run: |
+          uv venv
+          uv pip install "dbt-core>=1.8,<1.10" "dbt-duckdb>=1.8,<1.10"
+
+      - name: deps
+        working-directory: dbt
+        env:
+          DUCKDB_PATH: /tmp/ci.duckdb
+        run: |
+          source ../.venv/bin/activate
+          dbt deps
+
+      - name: compile
+        working-directory: dbt
+        env:
+          DUCKDB_PATH: /tmp/ci.duckdb
+          MINIO_ENDPOINT: dummy:9000
+          MINIO_ACCESS_KEY: dummy
+          MINIO_SECRET_KEY: dummy
+        run: |
+          source ../.venv/bin/activate
+          dbt parse
+          dbt compile --no-partial-parse
+
+      # No full `dbt build` in CI yet — needs a MinIO fixture. Track as a TODO.

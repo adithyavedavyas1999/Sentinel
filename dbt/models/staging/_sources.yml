@@ -1,0 +1,17 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: Raw landing zone in MinIO. DuckDB reads parquet via httpfs.
+    tables:
+      - name: tlc_yellow
+        # External parquet hive-partitioned by year/month. Glob via DuckDB.
+        meta:
+          external_location: >-
+            read_parquet('s3://{{ var("minio_bucket") }}/bronze/tlc/yellow/year=*/month=*/yellow_tripdata_*.parquet',
+                         hive_partitioning = 1)
+      - name: weather_nyc_daily
+        meta:
+          external_location: >-
+            read_parquet('s3://{{ var("minio_bucket") }}/bronze/weather/nyc/year=*/month=*/weather_nyc_*.parquet',
+                         hive_partitioning = 1)

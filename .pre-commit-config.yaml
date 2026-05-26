@@ -1,0 +1,37 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-merge-conflict
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: package.lock.json|uv.lock|dbt/seeds/.*
+
+  - repo: https://github.com/dbt-checkpoint/dbt-checkpoint
+    rev: v2.0.6
+    hooks:
+      - id: check-script-semicolon
+      - id: check-script-has-no-table-name
+      - id: check-model-has-tests
+        args: ["--tests", "not_null", "unique", "--"]
+        # only enforce on marts; staging is rough on purpose
+        files: ^dbt/models/marts/
+
+  # mypy locally is slow on a cold cache; keep it in CI but off pre-commit
+  # for now. revisit if drift becomes a problem.

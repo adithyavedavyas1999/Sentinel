@@ -1,0 +1,4 @@
+load_from:
+  - python_module:
+      module_name: sentinel.definitions
+      working_directory: /opt/dagster/app

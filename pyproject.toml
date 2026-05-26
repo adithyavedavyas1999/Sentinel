@@ -1,0 +1,135 @@
+[project]
+name = "sentinel"
+version = "0.1.0"
+description = "Local self-healing data pipeline (NYC TLC + weather)"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Adithya Vedavyas" }]
+
+dependencies = [
+    "dagster>=1.9,<1.11",
+    "dagster-webserver>=1.9,<1.11",
+    "dagster-postgres>=0.25,<0.27",
+    "dagster-dbt>=0.25,<0.27",
+    "dbt-core>=1.8,<1.10",
+    "dbt-duckdb>=1.8,<1.10",
+    "duckdb>=1.1",
+    "polars>=1.12",
+    "pyarrow>=17.0",
+    "httpx>=0.27",
+    "tenacity>=9.0",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.5",
+    "structlog>=24.4",
+    "minio>=7.2",
+    "prometheus-client>=0.21",
+    "typer>=0.12",
+    # opentelemetry comes later; not pulling yet to keep install fast
+]
+
+[project.scripts]
+sentinel = "sentinel.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "pytest-mock>=3.14",
+    "respx>=0.21",
+    "ruff>=0.7",
+    "mypy>=1.11",
+    "pre-commit>=4.0",
+    "testcontainers>=4.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["sentinel"]
+
+# --- ruff -------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["dbt/target", "data", ".venv"]
+
+[tool.ruff.lint]
+# starting set; we'll grow this. avoid enabling everything at once —
+# nothing kills momentum like a 400-error lint dump on a fresh repo.
+select = [
+    "E", "F", "W",   # pycodestyle + pyflakes
+    "I",             # isort
+    "UP",            # pyupgrade
+    "B",             # bugbear
+    "SIM",           # simplify
+    "RUF",
+]
+ignore = [
+    "E501",  # line length — let formatter handle it
+    "B008",  # function call in default arg; fastapi/typer idiom
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B011"]  # asserts in tests are fine
+"scripts/**/*.py" = ["T201"]  # prints in scripts are fine
+
+[tool.ruff.format]
+quote-style = "double"
+
+# --- mypy -------------------------------------------------------------------
+# deliberately lenient. strict mypy across a data codebase is a tax with
+# bad ROI; turning it up module-by-module as code stabilizes.
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+ignore_missing_imports = true
+follow_imports = "silent"
+# explicitly NOT setting strict = true.
+
+[[tool.mypy.overrides]]
+module = ["sentinel.ingest.*", "sentinel.observability.*"]
+disallow_untyped_defs = true
+
+# --- pytest -----------------------------------------------------------------
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--cov=sentinel",
+    "--cov-report=term-missing",
+    "--cov-fail-under=75",
+]
+testpaths = ["tests"]
+markers = [
+    "integration: requires docker compose stack",
+    "slow: deselect with -m 'not slow'",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["sentinel"]
+omit = [
+    "sentinel/__init__.py",
+    "sentinel/agent/*",  # phase 2 — not yet implemented, exclude from gate
+    # tested only via integration (needs a real dagster instance + failure run)
+    "sentinel/sensors/failure_capture.py",
+    # generated/wiring; coverage here is unit-testing a config dict
+    "sentinel/resources/dbt.py",
+    "sentinel/assets/dbt_models.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

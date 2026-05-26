@@ -1,0 +1,166 @@
+name: sentinel
+
+# Phase 1 services. Phase 2 (qdrant, redpanda, fastapi, streamlit) lands later.
+# Loki is intentionally commented out — defer until week 6 when there's volume
+# worth aggregating. See docs/roadmap.md.
+
+x-dagster-env: &dagster-env
+  DAGSTER_POSTGRES_USER: ${DAGSTER_POSTGRES_USER:-dagster}
+  DAGSTER_POSTGRES_PASSWORD: ${DAGSTER_POSTGRES_PASSWORD:-dagster}
+  DAGSTER_POSTGRES_DB: ${DAGSTER_POSTGRES_DB:-dagster}
+  DAGSTER_POSTGRES_HOSTNAME: dagster-postgres
+  DAGSTER_HOME: /opt/dagster/dagster_home
+  # MinIO creds for the Dagster IO managers
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minio}
+  MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minio12345}
+  # DuckDB warehouse path inside the container
+  DUCKDB_PATH: /opt/dagster/data/warehouse/sentinel.duckdb
+
+services:
+  dagster-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DAGSTER_POSTGRES_USER:-dagster}
+      POSTGRES_PASSWORD: ${DAGSTER_POSTGRES_PASSWORD:-dagster}
+      POSTGRES_DB: ${DAGSTER_POSTGRES_DB:-dagster}
+    volumes:
+      - dagster-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DAGSTER_POSTGRES_USER:-dagster}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "5433:5432"  # 5433 host-side; keeps 5432 free for laptop's own postgres
+    restart: unless-stopped
+
+  dagster-webserver:
+    build:
+      context: .
+      dockerfile: docker/dagster.Dockerfile
+    command: >
+      dagster-webserver -h 0.0.0.0 -p 3000 -w workspace.yaml
+    environment: *dagster-env
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./sentinel:/opt/dagster/app/sentinel
+      - ./dbt:/opt/dagster/app/dbt
+      - ./workspace.yaml:/opt/dagster/app/workspace.yaml:ro
+      - ./dagster.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
+      - sentinel-warehouse:/opt/dagster/data/warehouse
+    depends_on:
+      dagster-postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  dagster-daemon:
+    build:
+      context: .
+      dockerfile: docker/dagster.Dockerfile
+    command: dagster-daemon run
+    environment: *dagster-env
+    volumes:
+      - ./sentinel:/opt/dagster/app/sentinel
+      - ./dbt:/opt/dagster/app/dbt
+      - ./workspace.yaml:/opt/dagster/app/workspace.yaml:ro
+      - ./dagster.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
+      - sentinel-warehouse:/opt/dagster/data/warehouse
+    depends_on:
+      dagster-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2024-10-13T13-34-11Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio12345}
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # console
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # one-shot bucket bootstrap. exits 0 after creating buckets.
+  minio-init:
+    image: minio/mc:RELEASE.2024-10-08T09-37-26Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minio} ${MINIO_ROOT_PASSWORD:-minio12345};
+        mc mb --ignore-existing local/sentinel-raw local/sentinel-incidents;
+        mc anonymous set download local/sentinel-raw || true;
+        echo "buckets ready";
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d   # local-only; no need to keep more
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"   # local dev only
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.2.0
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./docker/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.2.0
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker/loki/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+volumes:
+  dagster-postgres-data:
+  minio-data:
+  prometheus-data:
+  grafana-data:
+  sentinel-warehouse:
+  loki-data:
