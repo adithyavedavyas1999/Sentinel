@@ -3,6 +3,7 @@
 This is for poking at parquet files without firing up the full stack.
 For an actual pipeline run, use ``make demo`` which goes through Dagster.
 """
+
 from __future__ import annotations
 
 import sys

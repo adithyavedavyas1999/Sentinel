@@ -8,11 +8,13 @@ server on port 9464.
 If we ever move to dagster-prometheus or otel, this module is the place to
 rewrite.
 """
+
 from __future__ import annotations
 
 import os
 import threading
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 
 from prometheus_client import Counter, Histogram, start_http_server
@@ -60,7 +62,7 @@ def start_metrics_server(port: int | None = None) -> None:
 
 
 @contextmanager
-def time_ingest(source: str):
+def time_ingest(source: str) -> Iterator[None]:
     """Context manager that records ingest latency on exit, success or not."""
     t0 = time.perf_counter()
     try:

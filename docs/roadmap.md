@@ -135,53 +135,63 @@ predictions against reality once Phase 2 starts.
 
 ## Phase 2 — self-healing
 
-### Week 7 — chaos harness + LiteLLM scaffold
+### Week 7 — chaos harness + LiteLLM scaffold [DONE]
 
-**Goals:** Build the failure injection tool. Stand up LiteLLM. No agent
-logic yet.
+Nine chaos scenarios are wired end-to-end. Originally shipped six and
+left `volume_drop` / `late_partition` as stubs pending "future infra";
+that turned out to be unnecessary — the injection itself doesn't need
+historical baselines or partition-window sensors, those live in the
+agent (week 10), not here. Filled both in same week.
 
-**Deliverables:**
+Two flavors:
 
-- `scripts/inject_failure.py` with at least 4 failure modes: 5xx from TLC,
-  Open-Meteo schema change, DuckDB lock contention, dbt model SQL error.
-- `sentinel/agent/llm.py`: thin LiteLLM wrapper, Groq default, env-switchable
-  to Anthropic/OpenAI. Mock client for tests.
-- A short notebook (yes, a notebook — kept in `docs/notebooks/`) showing
-  prompt iteration. Mark it WIP and never refactor it. Real repos have
-  one ugly notebook.
+- **State-flag** (`tlc_5xx`, `weather_429`, `duckdb_lock`,
+  `late_partition`): a JSON marker in `data/chaos/state.json`; bronze +
+  dbt assets check on materialize and raise `ChaosTriggered`. Reversed
+  by `sentinel chaos clear <name>`.
+- **Destructive** (`tlc_schema_drift`, `weather_schema_change`,
+  `null_spike`, `dbt_sql_error`, `volume_drop`): mutate parquet/SQL on
+  disk. `dbt_sql_error` has a clean reverse; the others require
+  re-running ingest.
 
-**DoD:** Injection script reproducibly breaks 4 failure paths. LLM wrapper
-returns structured JSON given a fake log payload.
+`sentinel/agent/llm.py` ships a LiteLLM wrapper (Groq default,
+env-switchable) with retry on rate-limit/5xx, a JSON-mode helper that
+validates against a pydantic schema, and a `MockLLMClient` for tests.
 
-**Commits:**
+Notebook lives at `docs/notebooks/prompt_iteration.ipynb`. WIP and ugly
+on purpose. Three prompt versions, two of which didn't work; leaving them
+so we don't re-derive them.
 
-- milestone: `chaos: failure injection harness`
-- milestone: `agent: litellm wrapper + groq default`
-- WIP: `notebook: prompt iteration scratch`
+**Deferred:** `scripts/inject_failure.py` — ended up not being needed
+because the same surface lives behind `sentinel chaos inject` and gets
+exercised in CI via the chaos tests.
 
 ---
 
-### Week 8 — context retrieval (Qdrant)
+### Week 8 — context retrieval (Qdrant) [DONE]
 
-**Goals:** Build the retrieval layer the agent will use: run history,
-lineage, asset docs.
+`sentinel/agent/context.py` builds an `IncidentContext` from up to five
+sources: the incident row, dbt lineage from `target/manifest.json`, recent
+runs via `DagsterInstance.get_run_records()` (chosen over GraphQL so the
+agent works from the daemon process, not the webserver), recent log lines,
+and top-k similar past incidents from Qdrant. Each source is optional —
+if dbt manifest isn't available or Qdrant is down, that field is empty
+and the rest still works.
 
-**Deliverables:**
+`sentinel/agent/embeddings.py`: fastembed (BAAI/bge-small-en-v1.5, 384-dim,
+ONNX, no torch dep) for vectors; `IncidentIndex` wraps `QdrantClient` for
+upsert + cosine search with optional asset_key filter. Long stack traces
+poison the small-model embedding so we keep them in the payload but not
+in the embedded text — see `summarize_for_embedding`.
 
-- `sentinel/agent/context.py`: pulls dbt manifest, recent run history from
-  Dagster's GraphQL, last N log lines for the failed asset.
-- Qdrant container in compose.
-- Embedding pipeline: chunk historical incidents + dbt model docs, embed
-  with a small model (consider `bge-small` via fastembed to keep it local).
+Qdrant added to compose at `:6333`. `scripts/index_incidents.py` does a
+one-shot backfill from sqlite into Qdrant; rerun after a rebuild or model
+change.
 
-**DoD:** Given a failed asset key, `context.build(asset_key)` returns a
-well-formed dict with lineage, logs, and top-k similar past incidents.
-
-**Commits:**
-
-- milestone: `agent: context builder (lineage + logs + qdrant retrieval)`
-- WIP: `qdrant: bump client version`
-- WIP: `actually persist the qdrant volume`
+**Open follow-up:** pgvector vs. Qdrant — Postgres is already in the stack
+and a single fewer container would be nice. Punted to keep filtering
+ergonomics for now; revisit if Qdrant becomes the only reason to run a
+new container per environment.
 
 ---
 

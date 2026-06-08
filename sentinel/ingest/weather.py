@@ -6,6 +6,7 @@ it.
 
 Reference: https://open-meteo.com/en/docs/historical-weather-api
 """
+
 from __future__ import annotations
 
 import calendar

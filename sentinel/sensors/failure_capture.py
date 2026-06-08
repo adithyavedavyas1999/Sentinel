@@ -3,6 +3,7 @@
 Fires on any RunFailure event. Walks the failed run's records, builds an
 Incident, persists it. The Phase 2 agent reads these.
 """
+
 from __future__ import annotations
 
 import traceback

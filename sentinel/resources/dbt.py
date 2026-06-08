@@ -4,6 +4,7 @@ The DbtCliResource needs a project_dir and profiles_dir. We point at the
 in-repo dbt/ directory; same paths work locally and in the container because
 of the bind mount.
 """
+
 from __future__ import annotations
 
 import shutil

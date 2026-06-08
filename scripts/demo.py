@@ -3,6 +3,7 @@
 Run after ``make up``. Materializes 3 months of TLC + weather against the
 running MinIO. Idempotent — re-running is a no-op if data is already landed.
 """
+
 from __future__ import annotations
 
 from dagster import DagsterInstance, materialize

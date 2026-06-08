@@ -7,9 +7,10 @@ run for that partition.
 Lightweight on purpose. Real freshness SLAs would compare published time to
 materialization time and alert; this is closer to "automatic catch-up".
 """
+
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 from dagster import (
@@ -36,9 +37,9 @@ def _next_month(d: date) -> date:
     default_status=DefaultSensorStatus.STOPPED,  # opt-in; running in dev is noisy
 )
 def tlc_freshness_sensor(context: SensorEvaluationContext):
-    materialized = monthly_partitions.get_partition_keys(
-        current_time=context.last_tick_completion_time
-    )
+    last_tick = context.last_tick_completion_time
+    now = datetime.fromtimestamp(last_tick, tz=UTC) if last_tick else None
+    materialized = monthly_partitions.get_partition_keys(current_time=now)
     if not materialized:
         return SkipReason("no partitions yet")
 

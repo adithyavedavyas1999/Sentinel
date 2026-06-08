@@ -63,7 +63,7 @@ def test_json_to_parquet_roundtrip():
 
 
 def test_json_to_parquet_raises_on_empty_payload():
-    with pytest.raises(ValueError, match="missing 'daily.time'"):
+    with pytest.raises(ValueError, match=r"missing 'daily\.time'"):
         weather.json_to_parquet_bytes({"daily": {}})
 
 

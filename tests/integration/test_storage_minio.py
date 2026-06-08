@@ -2,6 +2,7 @@
 
 Run with: ``pytest -m integration`` (skipped by default to keep CI fast).
 """
+
 from __future__ import annotations
 
 import socket
