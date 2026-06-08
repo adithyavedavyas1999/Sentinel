@@ -9,6 +9,7 @@ Dagster owns the existing postgres DB and I don't want to couple our schema
 to dagster's migrations. Move to Postgres when we have real write volume or
 need cross-process locking. Until then, file-based is cleaner.
 """
+
 from __future__ import annotations
 
 import json
@@ -105,7 +106,7 @@ class IncidentStore:
     def list_open(self, limit: int = 50) -> list[dict[str, Any]]:
         with self._conn() as c:
             cur = c.execute(
-                "SELECT * FROM incidents WHERE status='open' " "ORDER BY created_at DESC LIMIT ?",
+                "SELECT * FROM incidents WHERE status='open' ORDER BY created_at DESC LIMIT ?",
                 (limit,),
             )
             return [dict(r) for r in cur.fetchall()]

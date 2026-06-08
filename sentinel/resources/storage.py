@@ -63,6 +63,21 @@ class ObjectStorage(ConfigurableResource):
         )
         return len(data)
 
+    def get_bytes(self, bucket: str, key: str) -> bytes:
+        """Pull an object into memory.
+
+        Use sparingly — every byte goes through python. For real-volume reads
+        from silver/gold layers we use polars + the duckdb httpfs path, which
+        bypasses this entirely.
+        """
+        client = self._client()
+        resp = client.get_object(bucket, key)
+        try:
+            return resp.read()
+        finally:
+            resp.close()
+            resp.release_conn()
+
     def list_keys(self, bucket: str, prefix: str = "") -> Iterator[str]:
         client = self._client()
         for obj in client.list_objects(bucket, prefix=prefix, recursive=True):

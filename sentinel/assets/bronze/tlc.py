@@ -11,6 +11,8 @@ from dagster import (
     asset,
 )
 
+from sentinel.chaos.state import ChaosTriggered
+from sentinel.chaos.state import is_active as chaos_active
 from sentinel.ingest import tlc
 from sentinel.observability.metrics import (
     asset_materializations_total,
@@ -53,6 +55,19 @@ def bronze_tlc_yellow(
     p = context.partition_key  # YYYY-MM-DD (first of month)
     year, month, _ = (int(x) for x in p.split("-"))
     key = _bronze_key(year, month)
+
+    if chaos_active("tlc_5xx"):
+        # phase-2 hook: agent should detect and (per allowlist) retry-with-backoff
+        # after the operator clears the flag. for now, just raise.
+        raise ChaosTriggered("chaos:tlc_5xx — simulated upstream 5xx")
+
+    if chaos_active("late_partition"):
+        # Simulates the partition existing in the schedule before TLC
+        # actually publishes it. Agent's expected remediation (week 10) is
+        # partition-window-slip — re-run for the previous month.
+        raise ChaosTriggered(
+            f"chaos:late_partition — partition {p} not yet published upstream (404)"
+        )
 
     if storage.object_exists(bucket, key):
         context.log.info(f"already landed: s3://{bucket}/{key}")

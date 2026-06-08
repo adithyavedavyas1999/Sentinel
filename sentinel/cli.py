@@ -4,6 +4,7 @@ Two subcommands today: `incident list` and `chaos inject`. Wire-up is
 typer because the future agent commands will want completions and rich
 help, and that's typer's strength.
 """
+
 from __future__ import annotations
 
 import json
@@ -60,40 +61,65 @@ def incident_resolve(incident_id: str):
     typer.echo(f"resolved {incident_id}")
 
 
-_SCENARIOS = [
-    "tlc_5xx",
-    "tlc_schema_drift",
-    "weather_429",
-    "duckdb_lock",
-    "dbt_sql_error",
-    "null_spike",
-    "volume_drop",
-    "late_partition",
-]
-
-
 @chaos_app.command("list")
-def chaos_list():
-    for s in _SCENARIOS:
+def chaos_list(
+    active: bool = typer.Option(False, "--active", help="only show currently-tripped flags"),
+):
+    from sentinel.chaos import scenarios
+    from sentinel.chaos import state as chaos_state
+
+    if active:
+        rows = chaos_state.list_active()
+        if not rows:
+            typer.echo("no active chaos flags.")
+            return
+        for r in rows:
+            typer.echo(f"{r['name']:25s}  set_at={r['set_at']}")
+        return
+
+    for s in scenarios():
         typer.echo(s)
 
 
 @chaos_app.command("inject")
 def chaos_inject(
-    scenario: str = typer.Argument(..., help="one of: " + ", ".join(_SCENARIOS)),
+    scenario: str = typer.Argument(..., help="see `sentinel chaos list`"),
     dry_run: bool = typer.Option(False, "--dry-run", help="print the plan, don't apply"),
 ):
-    if scenario not in _SCENARIOS:
-        typer.echo(f"unknown scenario: {scenario}", err=True)
-        typer.echo("available: " + ", ".join(_SCENARIOS), err=True)
-        raise typer.Exit(code=1)
-
     from sentinel.chaos import run as run_scenario
+    from sentinel.chaos import scenarios
+
+    if scenario not in scenarios():
+        typer.echo(f"unknown scenario: {scenario}", err=True)
+        typer.echo("available: " + ", ".join(scenarios()), err=True)
+        raise typer.Exit(code=1)
 
     typer.echo(f"injecting scenario: {scenario}  dry_run={dry_run}")
     rc = run_scenario(scenario, dry_run=dry_run)
     if rc != 0:
         raise typer.Exit(code=rc)
+
+
+@chaos_app.command("clear")
+def chaos_clear(
+    scenario: str = typer.Argument(..., help="scenario to reverse"),
+):
+    from sentinel.chaos import clear as clear_scenario
+
+    rc = clear_scenario(scenario)
+    if rc == 0:
+        typer.echo(f"cleared {scenario}")
+    else:
+        typer.echo(f"nothing to clear for {scenario}", err=True)
+        raise typer.Exit(code=rc)
+
+
+@chaos_app.command("clear-all")
+def chaos_clear_all():
+    from sentinel.chaos import clear_all
+
+    clear_all()
+    typer.echo("cleared all chaos state.")
 
 
 def main() -> None:

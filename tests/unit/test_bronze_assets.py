@@ -1,17 +1,24 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 import respx
 from dagster import build_asset_context
 
 from sentinel.assets.bronze.tlc import bronze_tlc_yellow
 from sentinel.assets.bronze.weather import bronze_weather_nyc_daily
+from sentinel.chaos import state as chaos_state
 from sentinel.ingest import tlc as tlc_ingest
 from tests.unit.conftest import _STORE
 
 
 def _ctx(storage, partition: str = "2024-01-01"):
     return build_asset_context(partition_key=partition, resources={"storage": storage})
+
+
+@pytest.fixture
+def _isolate_chaos_state(monkeypatch, tmp_path):
+    monkeypatch.setenv("SENTINEL_CHAOS_STATE_PATH", str(tmp_path / "state.json"))
 
 
 @respx.mock
@@ -37,6 +44,21 @@ def test_bronze_tlc_yellow_is_idempotent(fake_storage):
 
     assert second.metadata["skipped"].value is True
     assert route.call_count == 1
+
+
+def test_bronze_tlc_yellow_late_partition_chaos_raises(fake_storage, _isolate_chaos_state):
+    chaos_state.set_active("late_partition")
+    with pytest.raises(chaos_state.ChaosTriggered) as exc:
+        bronze_tlc_yellow(_ctx(fake_storage, "2024-04-01"))
+    assert "late_partition" in str(exc.value)
+    assert "2024-04-01" in str(exc.value)
+
+
+def test_bronze_tlc_yellow_tlc_5xx_chaos_raises(fake_storage, _isolate_chaos_state):
+    chaos_state.set_active("tlc_5xx")
+    with pytest.raises(chaos_state.ChaosTriggered) as exc:
+        bronze_tlc_yellow(_ctx(fake_storage, "2024-04-01"))
+    assert "tlc_5xx" in str(exc.value)
 
 
 @respx.mock

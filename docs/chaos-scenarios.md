@@ -57,7 +57,8 @@ prefix; let the rest of the partition through. Allowlisted as
 
 ### `volume_drop`
 
-**What:** simulate a partial bronze file — only the first ~5% of rows present.
+**What:** rewrite the latest bronze TLC parquet keeping only the first ~5%
+of rows. Destructive — re-run the matching ingest partition to restore.
 **Detected at:** `fct_trips_daily` row-count tolerance test (warn). Optional
 gold-level volume anomaly check.
 **Ideal agent response:** file incident. Don't auto-heal — this could be
@@ -65,8 +66,11 @@ legitimate (e.g. holiday) or a real bug.
 
 ### `late_partition`
 
-**What:** request a partition for a month upstream hasn't published yet.
-**Detected at:** ingest fetch returns 404 from CloudFront.
+**What:** flag-based; the next `bronze.tlc_yellow` materialization raises
+`ChaosTriggered` with a "partition not yet published upstream (404)"
+message. Stand-in for the real failure mode where TLC hasn't dropped
+the month yet.
+**Detected at:** `bronze.tlc_yellow` materialization.
 **Ideal agent response:** partition window slip (allowlisted) — use D-1.
 
 ## Detection coverage matrix
@@ -81,5 +85,10 @@ legitimate (e.g. holiday) or a real bug.
 | null_spike            |                 |      x      |    x     |            |
 | volume_drop           |                 |      x      |          |     x      |
 | late_partition        |        x        |             |          |            |
+
+> Status: all nine scenarios are wired end-to-end as of week 7. The two
+> previously-stubbed entries (`volume_drop`, `late_partition`) now have
+> real implementations — the agent eval suite in phase 2 will use them
+> as ground-truth fixtures.
 
 If a row has no x, we don't catch it yet. Worth adding before Phase 2.

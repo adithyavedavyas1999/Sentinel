@@ -69,3 +69,16 @@ def test_ensure_bucket_creates_when_missing(mock_minio):
     mock_minio.bucket_exists.return_value = False
     _resource().ensure_bucket("new-bucket")
     mock_minio.make_bucket.assert_called_once_with("new-bucket")
+
+
+def test_get_bytes_reads_full_object_and_releases(mock_minio):
+    resp = MagicMock()
+    resp.read.return_value = b"hello"
+    mock_minio.get_object.return_value = resp
+
+    out = _resource().get_bytes("b", "k")
+
+    assert out == b"hello"
+    mock_minio.get_object.assert_called_once_with("b", "k")
+    resp.close.assert_called_once()
+    resp.release_conn.assert_called_once()

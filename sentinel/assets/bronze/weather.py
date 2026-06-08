@@ -7,6 +7,8 @@ from dagster import (
 )
 
 from sentinel.assets.bronze.tlc import monthly_partitions
+from sentinel.chaos.state import ChaosTriggered
+from sentinel.chaos.state import is_active as chaos_active
 from sentinel.ingest import weather
 from sentinel.observability.metrics import (
     asset_materializations_total,
@@ -41,6 +43,9 @@ def bronze_weather_nyc_daily(
     p = context.partition_key
     year, month, _ = (int(x) for x in p.split("-"))
     key = _bronze_key(year, month)
+
+    if chaos_active("weather_429"):
+        raise ChaosTriggered("chaos:weather_429 — simulated upstream rate limit")
 
     if storage.object_exists(bucket, key):
         context.log.info(f"already landed: s3://{bucket}/{key}")

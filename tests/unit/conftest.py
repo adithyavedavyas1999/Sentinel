@@ -33,6 +33,9 @@ class FakeStorage(ObjectStorage):
         _STORE[bucket][key] = data
         return len(data)
 
+    def get_bytes(self, bucket: str, key: str) -> bytes:
+        return _STORE[bucket][key]
+
     def list_keys(self, bucket: str, prefix: str = "") -> Iterator[str]:
         for k in _STORE.get(bucket, {}):
             if k.startswith(prefix):
