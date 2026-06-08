@@ -1,8 +1,8 @@
 name: sentinel
 
-# Phase 1 services. Phase 2 (qdrant, redpanda, fastapi, streamlit) lands later.
-# Loki is intentionally commented out — defer until week 6 when there's volume
-# worth aggregating. See docs/roadmap.md.
+# Phase 1 services + qdrant (added in week 8 for the agent's similar-incident
+# retrieval). FastAPI + streamlit land in week 11; redpanda is on the maybe
+# pile depending on whether we end up needing event-stream replay.
 
 x-dagster-env: &dagster-env
   DAGSTER_POSTGRES_USER: ${DAGSTER_POSTGRES_USER:-dagster}
@@ -157,6 +157,17 @@ services:
       - loki
     restart: unless-stopped
 
+  # phase 2: qdrant for similar-incident retrieval. snapshot endpoint left
+  # off because we're not running disaster recovery on a portfolio repo.
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    ports:
+      - "6333:6333"
+      - "6334:6334"  # grpc; optional but the dashboard nags without it
+    volumes:
+      - qdrant-data:/qdrant/storage
+    restart: unless-stopped
+
 volumes:
   dagster-postgres-data:
   minio-data:
@@ -164,3 +175,4 @@ volumes:
   grafana-data:
   sentinel-warehouse:
   loki-data:
+  qdrant-data:

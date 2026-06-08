@@ -26,6 +26,13 @@ dependencies = [
     "prometheus-client>=0.21",
     "typer>=0.12",
     # opentelemetry comes later; not pulling yet to keep install fast
+
+    # phase 2 — agent stack. these are pulled in week 7/8 because nothing
+    # downstream uses them yet. happy to swap litellm for direct provider
+    # SDKs if the abstraction starts costing more than it saves.
+    "litellm>=1.51,<2.0",
+    "fastembed>=0.4,<0.5",
+    "qdrant-client>=1.12,<2.0",
 ]
 
 [project.scripts]
@@ -55,7 +62,9 @@ packages = ["sentinel"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = ["dbt/target", "data", ".venv"]
+extend-exclude = ["dbt/target", "data", ".venv", "docs/notebooks"]
+# notebooks are kept WIP-ugly on purpose; lint-cleaning them would defeat
+# the point. see docs/notebooks/prompt_iteration.ipynb header.
 
 [tool.ruff.lint]
 # starting set; we'll grow this. avoid enabling everything at once —
@@ -119,12 +128,16 @@ branch = true
 source = ["sentinel"]
 omit = [
     "sentinel/__init__.py",
-    "sentinel/agent/*",  # phase 2 — not yet implemented, exclude from gate
     # tested only via integration (needs a real dagster instance + failure run)
     "sentinel/sensors/failure_capture.py",
     # generated/wiring; coverage here is unit-testing a config dict
     "sentinel/resources/dbt.py",
     "sentinel/assets/dbt_models.py",
+    # context.py reads from a live DagsterInstance + manifest.json on disk;
+    # the parts we can mock are tested, but the dagster-specific glue is
+    # easier to verify by running the agent against a real failure than by
+    # building a fixture for every event-log shape.
+    "sentinel/agent/context.py",
 ]
 
 [tool.coverage.report]
