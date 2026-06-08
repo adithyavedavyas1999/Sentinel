@@ -20,7 +20,9 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           version: "0.5.5"
-          enable-cache: true
+          # No uv.lock checked in (intentional -- pyproject.toml drives
+          # everything). Leaving enable-cache on points the action at a
+          # missing **/uv.lock and fails the job, so it stays off.
 
       - name: python
         run: uv python install 3.11
