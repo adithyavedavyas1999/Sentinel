@@ -51,3 +51,17 @@ def test_resolve_moves_off_open_list(store):
 
 def test_get_returns_none_for_unknown_id(store):
     assert store.get("nope") is None
+
+
+def test_set_proposed_fix_round_trips(store):
+    iid = store.insert(Incident(asset_key="x", error_type="y", error_message="z"))
+    assert store.get(iid)["proposed_fix"] is None
+    store.set_proposed_fix(iid, proposed_fix="retry-with-backoff")
+    assert store.get(iid)["proposed_fix"] == "retry-with-backoff"
+
+
+def test_set_proposed_fix_is_idempotent(store):
+    iid = store.insert(Incident(asset_key="x", error_type="y", error_message="z"))
+    store.set_proposed_fix(iid, proposed_fix="retry-with-backoff")
+    store.set_proposed_fix(iid, proposed_fix="retry-with-backoff")
+    assert store.get(iid)["proposed_fix"] == "retry-with-backoff"

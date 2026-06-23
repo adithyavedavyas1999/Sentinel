@@ -123,3 +123,17 @@ class IncidentStore:
                 "UPDATE incidents SET status='resolved', resolved_at=? WHERE id=?",
                 (datetime.now(UTC).isoformat(), incident_id),
             )
+
+    def set_proposed_fix(self, incident_id: str, *, proposed_fix: str) -> None:
+        """Stamp the agent's proposed fix back on the incident row.
+
+        Idempotent -- safe to re-call with the same value (e.g. the agent
+        sensor re-ticks on a row that was already diagnosed but somehow
+        didn't get its MinIO blob). The unique status/resolved fields are
+        left alone here; resolution is a separate human/auto action.
+        """
+        with self._conn() as c:
+            c.execute(
+                "UPDATE incidents SET proposed_fix=? WHERE id=?",
+                (proposed_fix, incident_id),
+            )

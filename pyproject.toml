@@ -27,12 +27,16 @@ dependencies = [
     "typer>=0.12",
     # opentelemetry comes later; not pulling yet to keep install fast
 
-    # phase 2 — agent stack. these are pulled in week 7/8 because nothing
-    # downstream uses them yet. happy to swap litellm for direct provider
-    # SDKs if the abstraction starts costing more than it saves.
+    # phase 2 — agent stack. litellm + embeddings land in weeks 7/8;
+    # langgraph in week 9 (state machine only; we don't pull langchain's
+    # provider abstractions). fastapi + streamlit land in week 11.
     "litellm>=1.51,<2.0",
     "fastembed>=0.4,<0.5",
     "qdrant-client>=1.12,<2.0",
+    "langgraph>=0.2,<0.4",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "streamlit>=1.40",
 ]
 
 [project.scripts]
@@ -138,6 +142,9 @@ omit = [
     # easier to verify by running the agent against a real failure than by
     # building a fixture for every event-log shape.
     "sentinel/agent/context.py",
+    # streamlit page: pure rendering + HTTP, no logic worth covering in a unit
+    # test. Verified manually + by the API tests it consumes.
+    "sentinel/ui/dashboard.py",
 ]
 
 [tool.coverage.report]

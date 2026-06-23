@@ -11,7 +11,11 @@ from sentinel.assets.silver.trips_weather import (
 from sentinel.observability.logging import configure_logging
 from sentinel.observability.metrics import start_metrics_server
 from sentinel.resources import ObjectStorage, dbt_resource
-from sentinel.sensors import failure_capture_sensor, tlc_freshness_sensor
+from sentinel.sensors import (
+    diagnostic_agent_sensor,
+    failure_capture_sensor,
+    tlc_freshness_sensor,
+)
 from sentinel.settings import get_settings
 
 settings = get_settings()
@@ -25,7 +29,7 @@ silver_assets = load_assets_from_package_module(silver, group_name="silver")
 defs = Definitions(
     assets=[*bronze_assets, *silver_assets, sentinel_dbt_assets],
     asset_checks=[check_rowcount_positive, check_pickup_ts_not_null],
-    sensors=[tlc_freshness_sensor, failure_capture_sensor],
+    sensors=[tlc_freshness_sensor, failure_capture_sensor, diagnostic_agent_sensor],
     resources={
         "storage": ObjectStorage(
             endpoint=settings.minio_endpoint,

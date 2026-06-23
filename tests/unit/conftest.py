@@ -41,6 +41,10 @@ class FakeStorage(ObjectStorage):
             if k.startswith(prefix):
                 yield k
 
+    def delete_object(self, bucket: str, key: str) -> None:
+        # Idempotent: missing-delete is fine (matches the real ObjectStorage).
+        _STORE.get(bucket, {}).pop(key, None)
+
 
 @pytest.fixture
 def fake_storage() -> FakeStorage:

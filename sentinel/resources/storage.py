@@ -83,3 +83,17 @@ class ObjectStorage(ConfigurableResource):
         for obj in client.list_objects(bucket, prefix=prefix, recursive=True):
             if obj.object_name is not None:
                 yield obj.object_name
+
+    def delete_object(self, bucket: str, key: str) -> None:
+        """Remove a single object. Used by remediation rollback paths.
+
+        Swallows ``NoSuchKey`` -- delete-of-missing is idempotent for our
+        purposes. Anything else raises so callers can surface the failure.
+        """
+        client = self._client()
+        try:
+            client.remove_object(bucket, key)
+        except S3Error as exc:
+            if exc.code in ("NoSuchKey", "NoSuchObject"):
+                return
+            raise
