@@ -195,104 +195,99 @@ new container per environment.
 
 ---
 
-### Week 9 — LangGraph diagnostic agent
+### Week 9 — LangGraph diagnostic agent [DONE]
 
-**Goals:** First end-to-end agent: failure → context → diagnosis → incident
-report. **No remediation yet.**
+`sentinel/agent/graph.py` is a LangGraph state machine with four nodes
+(classify → gather_context → diagnose → format_incident). Only the
+diagnose node calls the LLM; classification is heuristic and lives in
+``_classify`` so we can test the failure-handling without burning
+tokens.
 
-**Deliverables:**
+The agent surface stays decoupled from Dagster: ``AgentDeps`` carries
+``LLMClient`` + ``IncidentStore`` + optional ``DagsterInstance`` +
+optional ``IncidentIndex``, so tests construct a graph with mocks and
+the sensor wires the real things. Output is a ``incident_report`` dict
+written verbatim to ``sentinel-incidents`` MinIO.
 
-- `sentinel/agent/graph.py`: LangGraph state machine. Nodes: classify,
-  gather context, diagnose, format incident.
-- Dagster sensor: on asset failure, fire the agent and write the incident
-  to a `incidents/` MinIO bucket as JSON.
-- Two unit tests against recorded fixtures from the chaos harness.
-
-**DoD:** Inject a known failure → incident JSON appears in MinIO with a
-plausible diagnosis and a proposed-fix string.
-
-**Commits:**
-
-- milestone: `agent: langgraph diagnostic loop (read-only)`
-- WIP: `sensor: deduplicate consecutive failures`
+Sensor is `diagnostic_agent_sensor` — read-only, default-stopped (LLM
+calls cost money). Re-tick is a no-op for already-diagnosed incidents.
 
 ---
 
-### Week 10 — remediation allowlist + refactor
+### Week 10 — remediation allowlist + refactor [DONE — refactor #2]
 
-**Goals:** Add the constrained remediation actions. **Refactor #2** on the
-agent graph — the week-9 shape is probably wrong; expect to split a node.
+`sentinel/agent/remediation/` ships three actions (`retry-with-backoff`,
+`partition-window-slip`, `coerce-to-string`) behind a uniform protocol:
+``guard``, ``execute``, ``rollback``. Each one is a pure function of
+``(incident, RemediationDeps)``, fixture-tested without a Dagster
+instance.
 
-**Deliverables:**
+Refactor that landed this week: split the agent graph's ``diagnose``
+node into ``diagnose`` (the LLM call) + ``propose_action`` (translate
+``proposed_fix`` into a concrete remediation plan, validated against
+the same allowlist). Reasons it was worth splitting:
 
-- Allowlisted actions: retry-with-backoff, partition-window slip, schema-
-  drift coerce-to-string (per ADR-004).
-- Each action has: a guard, an execute, a rollback, and a fixture-based
-  unit test.
-- Refactor commit splits the `diagnose` node into `classify` +
-  `propose_action` once it's clear they have different prompts.
+- The two have different inputs (LLM-shaped vs. registry-shaped).
+- The dashboard's approve button reuses ``propose_action`` cleanly.
+- Off-allowlist proposals are now stamped with a structured
+  ``proposed_action.status='skipped'`` reason instead of being
+  invisibly dropped.
 
-**DoD:** Inject 3 of the 4 chaos failures → agent remediates and the pipeline
-finishes green. The 4th (SQL error) files an incident only.
-
-**Commits:**
-
-- milestone: `agent: allowlisted remediation (retry, slip, coerce)`
-- milestone: `refactor: split diagnose into classify+propose`
-  - body: "the single 'diagnose' node was carrying two prompts. splitting
-    so we can iterate on each independently."
-- WIP: `agent: tighten the slip-window guard`
-
----
-
-### Week 11 — FastAPI + Streamlit incident dashboard
-
-**Goals:** Give the agent's output a face. Read-only UI.
-
-**Deliverables:**
-
-- FastAPI service exposing `/incidents`, `/incidents/{id}`, `/health`.
-- Streamlit page that lists open incidents, shows the diagnosis, the proposed
-  fix, links to relevant Dagster + Grafana URLs.
-- One-click "approve remediation" button. (It writes an approval record;
-  the agent re-runs in remediation mode on next sensor tick.)
-
-**DoD:** Demo path: trigger a chaos failure → see the incident in Streamlit
-within 60s → approve → pipeline recovers.
-
-**Commits:**
-
-- milestone: `api: fastapi incident endpoints`
-- milestone: `ui: streamlit incident dashboard`
-- WIP: `streamlit: stop double-fetching on rerun`
+The agent itself never executes an action whose name is off the
+allowlist — ``validate_remediation_claim`` plus the registry-only
+``dispatch`` belt-and-braces this. Same logic gates the FastAPI
+approve endpoint, so the dashboard cannot apply an action the agent
+itself isn't allowed to apply.
 
 ---
 
-### Week 12 — polish, blog, demo
+### Week 11 — FastAPI + Streamlit incident dashboard [DONE]
 
-**Goals:** Make it presentable without overpolishing. **Refactor #3** if
-something has been bugging me — likely the IO manager between Dagster and
-DuckDB.
+`sentinel/api/main.py`:
 
-**Deliverables:**
+- `GET /health` — readiness probe.
+- `GET /incidents` / `GET /incidents/{id}` — list open + show detail,
+  rehydrating the stored incident report from MinIO.
+- `POST /incidents/{id}/resolve` — manual close.
+- `POST /incidents/{id}/approve` — dispatches the same allowlisted
+  remediation that the agent would run.
+- `GET /allowlist` — discovery endpoint the UI uses to populate the
+  approve dropdown.
 
-- Rewrite README in your own voice. Strip any remaining AI cadence.
-- Architecture doc updated with what actually shipped.
-- Short demo video (Loom or similar). 4-6 minutes, not 15.
-- Blog post draft for personal site: "What I learned trying to build a
-  self-healing pipeline." Be specific about what failed.
-- One observable bug left documented in `docs/known-issues.md`. Real
-  projects have known issues; pretending you don't have any is the tell.
+`sentinel/ui/dashboard.py`: single-page Streamlit (two columns: list +
+detail). Lets a reviewer click through diagnoses and approve fixes
+without leaving the page.
 
-**DoD:** A stranger can clone, run `make demo`, and see the demo path work.
-The blog post is up. The README is yours.
+Docker Compose ships `sentinel-api` (uvicorn :8000) and
+`sentinel-dashboard` (streamlit :8501) on the same image we use for
+Dagster — one Python install for everything.
 
-**Commits:**
+**Deferred:** "deep link to Dagster + Grafana" from the dashboard. The
+URLs are environment-specific and stale links are worse than no links.
+Phase 3 candidate.
 
-- milestone: `docs: rewrite readme in human voice`
-- milestone: `refactor: simplify duckdb IO manager`
-- WIP: `typo`
-- WIP: `bump deps before release`
+---
+
+### Week 12 — polish, IO manager refactor, known-issues doc [DONE]
+
+This week was mostly text + cleanup:
+
+- README rewritten to reflect the shape that actually shipped (12
+  weeks vs. the original 6-then-extend pitch).
+- `docs/known-issues.md` lists three real ones — coverage gap on
+  ``sentinel.sensors.failure_capture``, a sqlglot deprecation warning
+  that's not ours to fix, and the IO-manager TODO below.
+- **Refactor #3** ended up *not* being a heavy IO-manager rewrite.
+  The existing storage resource is fine; the actual annoyance was that
+  the chaos module talked to MinIO via its own ad-hoc helpers
+  (`_storage()`, `_read_parquet`, `_write_parquet`), duplicating the
+  resource. Folded those into a thin internal protocol so a future
+  IO-manager-proper refactor doesn't have to touch chaos. Tracked as
+  open in known-issues.
+
+**Deferred:** demo video + blog post — those are human deliverables
+that don't live in the repo. Hooks are in `docs/demo-script.md` and
+`docs/blog/phase-1-outline.md` for whoever records them.
 
 ---
 

@@ -19,12 +19,18 @@ preserved.
 
 ## Status
 
-Weeks 1–8 done. The diagnostic agent (week 9) is the next chunk of work —
-the LLM wrapper, context retrieval, and chaos harness it'll use are all
-in place. See [docs/roadmap.md](docs/roadmap.md).
+All twelve weeks of the roadmap are landed. End-to-end flow: chaos
+injection → asset failure → incident captured to sqlite → agent
+diagnoses via LLM → optional auto-remediation against an allowlist →
+incident JSON written to MinIO → FastAPI + Streamlit dashboard for
+human review and approval.
 
-Screenshots: TODO. Add Dagster UI + Grafana shots once you've run the
-demo end-to-end on your laptop.
+See [docs/roadmap.md](docs/roadmap.md) for what each week shipped,
+[docs/known-issues.md](docs/known-issues.md) for what I'd fix in a
+real codebase, and [docs/architecture.md](docs/architecture.md) for the
+ADRs.
+
+Screenshots: still TODO. Easier once the demo is recorded.
 
 ## What's inside
 
@@ -32,9 +38,12 @@ demo end-to-end on your laptop.
 - dbt-core on DuckDB for transforms
 - MinIO for raw landing, Postgres for Dagster metadata
 - Prometheus + Grafana + Loki for metrics and logs
-- LiteLLM (Groq default) wrapping diagnosis prompts
+- LiteLLM (Groq default) for the diagnosis prompt; provider-swappable
+  via env var
 - fastembed + Qdrant for similar-incident retrieval
-- LangGraph state machine on top — landing in week 9
+- LangGraph for the agent state machine — orchestration only, no
+  LangChain provider abstractions (see ADR-005)
+- FastAPI + Streamlit for the incident dashboard
 
 ## Quickstart
 
@@ -49,6 +58,31 @@ make demo         # materializes the pipeline end-to-end
 Dagster UI: <http://localhost:3000>
 Grafana: <http://localhost:3001>
 MinIO console: <http://localhost:9001>
+Incident API: <http://localhost:8000/docs> (Swagger)
+Incident dashboard: <http://localhost:8501>
+
+Local-only entry points if you don't want the full compose stack:
+
+```bash
+make api          # uvicorn on :8000
+make dashboard    # streamlit on :8501
+```
+
+## Demo path
+
+1. `make demo` — three months of bronze + dbt build.
+2. `sentinel chaos inject tlc_5xx` — flips a flag so the next TLC
+   materialization will raise.
+3. Re-run that partition in Dagster. The failure capture sensor stores
+   the incident in sqlite.
+4. Enable `diagnostic_agent_sensor` from the Dagster UI. Within ~30s
+   the agent diagnoses, proposes `retry-with-backoff`, clears the
+   chaos flag, and the incident report appears in
+   `sentinel-incidents/incidents/<id>.json`.
+5. Open the Streamlit dashboard, hit "Apply" on retry-with-backoff
+   (idempotent — same action the agent ran). Pipeline resumes.
+
+See [docs/demo-script.md](docs/demo-script.md) for the long version.
 
 ## Docs
 
@@ -57,24 +91,28 @@ MinIO console: <http://localhost:9001>
 - [Data model](docs/data-model.md)
 - [Chaos scenarios](docs/chaos-scenarios.md)
 - [Demo script](docs/demo-script.md)
+- [Known issues](docs/known-issues.md)
 
-## Phase 2 — in progress
+## Repository layout
 
-Foundation is in:
-
-- `sentinel/agent/llm.py`: LiteLLM wrapper with retry, JSON-mode validation,
-  mock client for tests
+- `sentinel/ingest/`: pure-python TLC + Open-Meteo fetchers, retry-aware
+- `sentinel/assets/`: Dagster bronze + interim silver assets
+- `sentinel/observability/`: Prometheus, Grafana, Loki (metrics, logs)
+- `sentinel/agent/llm.py`: LiteLLM (Groq default) wrapping diagnosis prompts
 - `sentinel/agent/context.py`: dbt manifest + run history + recent logs +
   similar incidents from Qdrant, all optional
-- `sentinel/agent/embeddings.py`: fastembed (local, no torch) + Qdrant
+- `sentinel/agent/embeddings.py`: fastembed + Qdrant for similar-incident
+  retrieval
+- `sentinel/agent/graph.py`: LangGraph state machine
+  (classify → gather_context → diagnose → propose_action → format_incident)
+- `sentinel/agent/remediation/`: three allowlisted actions
+  (retry-with-backoff, partition-window-slip, coerce-to-string), each
+  with guard/execute/rollback
+- `sentinel/api/`: FastAPI service over the incident store + allowlist
+- `sentinel/ui/dashboard.py`: Streamlit incident page
 - `sentinel/chaos/`: nine failure scenarios, all wired end-to-end
-
-Still to come:
-
-- LangGraph state machine that ties it together (week 9)
-- Allowlisted auto-remediation (week 10) — see ADR-004 for what it can
-  and cannot do
-- FastAPI + Streamlit incident dashboard (week 11)
+- `sentinel/quality/`: incident store in sqlite for agent to consume
+- `dbt/`: dbt-core on DuckDB
 
 ## Why does this exist
 
