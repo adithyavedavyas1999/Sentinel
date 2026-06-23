@@ -168,6 +168,48 @@ services:
       - qdrant-data:/qdrant/storage
     restart: unless-stopped
 
+  # week 11: read-mostly FastAPI in front of the incident store + a Streamlit
+  # dashboard that hits it. Both share the same source image as Dagster so we
+  # don't ship a second python install just for two small processes.
+  sentinel-api:
+    build:
+      context: .
+      dockerfile: docker/dagster.Dockerfile
+    command: >
+      uvicorn sentinel.api:app --host 0.0.0.0 --port 8000
+    environment:
+      <<: *dagster-env
+      SENTINEL_INCIDENTS_DB: /opt/dagster/data/warehouse/incidents.sqlite
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./sentinel:/opt/dagster/app/sentinel
+      - sentinel-warehouse:/opt/dagster/data/warehouse
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  sentinel-dashboard:
+    build:
+      context: .
+      dockerfile: docker/dagster.Dockerfile
+    command: >
+      streamlit run sentinel/ui/dashboard.py
+      --server.address 0.0.0.0
+      --server.port 8501
+      --server.headless true
+    environment:
+      <<: *dagster-env
+      SENTINEL_API_URL: http://sentinel-api:8000
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./sentinel:/opt/dagster/app/sentinel
+    depends_on:
+      - sentinel-api
+    restart: unless-stopped
+
 volumes:
   dagster-postgres-data:
   minio-data:

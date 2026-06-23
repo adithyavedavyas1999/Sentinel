@@ -60,6 +60,12 @@ test-unit: ## unit tests only (fast)
 test-integration: ## integration tests (needs docker)
 	pytest -m integration tests/integration
 
+api: ## run the incident API locally on :8000
+	uvicorn sentinel.api:app --reload --host 0.0.0.0 --port 8000
+
+dashboard: ## run the streamlit dashboard locally on :8501
+	streamlit run sentinel/ui/dashboard.py
+
 clean: ## stop stack and wipe local data (destructive)
 	$(COMPOSE) down -v
 	rm -rf data/warehouse/*.duckdb data/raw/*
