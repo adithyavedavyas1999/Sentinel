@@ -43,6 +43,22 @@ jobs:
           source .venv/bin/activate
           mypy sentinel
 
+      # Test collection imports `sentinel.assets.dbt_models`, which loads
+      # `dbt/target/manifest.json` eagerly. The manifest is gitignored,
+      # so we have to generate it before pytest runs. dbt-core/dbt-duckdb
+      # are main deps so they're already installed.
+      - name: dbt parse (generate manifest)
+        working-directory: dbt
+        env:
+          DUCKDB_PATH: /tmp/ci.duckdb
+          MINIO_ENDPOINT: dummy:9000
+          MINIO_ACCESS_KEY: dummy
+          MINIO_SECRET_KEY: dummy
+        run: |
+          source ../.venv/bin/activate
+          dbt deps
+          dbt parse
+
       - name: pytest
         run: |
           source .venv/bin/activate

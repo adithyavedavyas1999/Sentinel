@@ -21,6 +21,8 @@ dbt_project = DbtProject(
     project_dir=_DBT_DIR,
     profiles_dir=_DBT_DIR,
 )
+# Regenerates target/manifest.json when DAGSTER_IS_DEV=1 is set. CI bootstraps
+# the manifest with an explicit `dbt parse` step before pytest -- see ci.yml.
 dbt_project.prepare_if_dev()
 
 
